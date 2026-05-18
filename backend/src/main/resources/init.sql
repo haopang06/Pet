@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS pets (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     name VARCHAR(255) NOT NULL,
+    pet_type VARCHAR(50) NOT NULL,
     breed VARCHAR(255) NOT NULL,
     age INT NOT NULL,
     weight DOUBLE NOT NULL,
@@ -54,6 +55,8 @@ CREATE TABLE IF NOT EXISTS feeding_plans (
     carbs INT NOT NULL,
     frequency INT NOT NULL,
     portion_size DOUBLE NOT NULL,
+    canned_portion_size DOUBLE,
+    freeze_dried_portion_size DOUBLE,
     pet_id BIGINT,
     FOREIGN KEY (pet_id) REFERENCES pets(id)
 );
@@ -62,6 +65,6 @@ CREATE TABLE IF NOT EXISTS feeding_plans (
 INSERT INTO users (username, password, email) VALUES
 ('admin', '$2a$10$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW', 'admin@example.com');
 
-INSERT INTO pets (name, breed, age, weight, activity_level, user_id) VALUES
-('小白', '拉布拉多', 2, 25.5, 'medium', 1),
-('小花', '英短', 1, 4.2, 'low', 1);
+INSERT INTO pets (name, pet_type, breed, age, weight, activity_level, user_id) VALUES
+('小白', 'dog', '拉布拉多', 2, 25.5, 'medium', 1),
+('小花', 'cat', '英短', 1, 4.2, 'low', 1);

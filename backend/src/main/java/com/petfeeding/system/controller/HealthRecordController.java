@@ -20,8 +20,12 @@ public class HealthRecordController {
 
     @PostMapping
     public ResponseEntity<?> createHealthRecord(@RequestBody HealthRecord healthRecord) {
-        HealthRecord savedRecord = healthRecordService.save(healthRecord);
-        return ResponseEntity.ok(savedRecord);
+        try {
+            HealthRecord savedRecord = healthRecordService.save(healthRecord);
+            return ResponseEntity.ok(savedRecord);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(java.util.Collections.singletonMap("message", e.getMessage()));
+        }
     }
 
     @GetMapping("/{petId}")
@@ -40,5 +44,14 @@ class HealthAlertController {
     @GetMapping("/{petId}")
     public ResponseEntity<?> getHealthAlerts(@PathVariable Long petId) {
         return ResponseEntity.ok(healthAlertService.findByPetId(petId));
+    }
+
+    @RequestMapping(value = "/{alertId}/handled", method = {RequestMethod.PATCH, RequestMethod.POST})
+    public ResponseEntity<?> markHandled(@PathVariable Long alertId) {
+        try {
+            return ResponseEntity.ok(healthAlertService.markHandled(alertId));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(java.util.Collections.singletonMap("message", e.getMessage()));
+        }
     }
 }

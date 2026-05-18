@@ -31,6 +31,8 @@ const handleLogin = async () => {
   try {
     const response = await axios.post('/api/auth/login', form.value)
     localStorage.setItem('token', response.data.token)
+    localStorage.setItem('userId', response.data.userId)
+    localStorage.setItem('username', response.data.username)
     router.push('/')
   } catch (error) {
     alert('登录失败，请检查用户名和密码')

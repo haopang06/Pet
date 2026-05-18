@@ -15,6 +15,8 @@ public class FeedingPlan {
     private Integer carbs;
     private Integer frequency;
     private Double portionSize;
+    private Double cannedPortionSize;
+    private Double freezeDriedPortionSize;
 
     @ManyToOne
     @JoinColumn(name = "pet_id")
@@ -75,6 +77,22 @@ public class FeedingPlan {
 
     public void setPortionSize(Double portionSize) {
         this.portionSize = portionSize;
+    }
+
+    public Double getCannedPortionSize() {
+        return cannedPortionSize;
+    }
+
+    public void setCannedPortionSize(Double cannedPortionSize) {
+        this.cannedPortionSize = cannedPortionSize;
+    }
+
+    public Double getFreezeDriedPortionSize() {
+        return freezeDriedPortionSize;
+    }
+
+    public void setFreezeDriedPortionSize(Double freezeDriedPortionSize) {
+        this.freezeDriedPortionSize = freezeDriedPortionSize;
     }
 
     public Pet getPet() {

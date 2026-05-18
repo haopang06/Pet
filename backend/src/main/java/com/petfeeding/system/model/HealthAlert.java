@@ -1,5 +1,8 @@
 package com.petfeeding.system.model;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 import javax.persistence.*;
 import java.util.Date;
 
@@ -11,11 +14,14 @@ public class HealthAlert {
     private Long id;
 
     private String message;
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "Asia/Shanghai")
     private Date date;
     private String severity;
+    private Boolean handled = false;
 
     @ManyToOne
     @JoinColumn(name = "pet_id")
+    @JsonIgnoreProperties({"healthRecords", "healthAlerts", "user"})
     private Pet pet;
 
     // Getters and Setters
@@ -49,6 +55,14 @@ public class HealthAlert {
 
     public void setSeverity(String severity) {
         this.severity = severity;
+    }
+
+    public Boolean getHandled() {
+        return Boolean.TRUE.equals(handled);
+    }
+
+    public void setHandled(Boolean handled) {
+        this.handled = handled;
     }
 
     public Pet getPet() {
