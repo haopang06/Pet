@@ -32,7 +32,7 @@
     <section v-else class="dashboard-grid">
       <aside class="pet-summary">
         <div class="pet-main">
-          <PetTypeIcon :type="resolvePetType(selectedPet)" />
+          <PetAvatar :pet="selectedPet" :type="resolvePetType(selectedPet)" size="lg" />
           <div>
             <h2>{{ selectedPet.name }}</h2>
             <p>{{ petTypeText(resolvePetType(selectedPet)) }} / {{ selectedPet.breed || '未填写品种' }}</p>
@@ -55,7 +55,7 @@
             :class="{ active: String(pet.id) === String(selectedPetId) }"
             @click="selectedPetId = String(pet.id)"
           >
-            <PetTypeIcon :type="resolvePetType(pet)" />
+            <PetAvatar :pet="pet" :type="resolvePetType(pet)" size="sm" />
             <span>{{ pet.name }}</span>
             <small>{{ pet.breed }}</small>
           </button>
@@ -92,9 +92,15 @@
           </div>
 
           <div class="schedule-row">
-            <div>
+            <div class="checkin-summary">
               <span class="dot done"></span>
-              今日已生成 {{ feedingPlan ? 1 : 0 }} 个喂养方案
+              <span>{{ todayCheckinText }}</span>
+              <router-link
+                v-if="showFeedingCheckinLink"
+                :to="feedingCheckinLink"
+              >
+                去打卡
+              </router-link>
             </div>
             <div>
               <span class="dot pending"></span>
@@ -156,6 +162,16 @@
             maxlength="1000"
             placeholder="记录事项，例如疫苗、过敏、偏好、医生建议等"
           ></textarea>
+          <div class="note-image-actions">
+            <input id="noteImageInput" ref="noteImageInput" class="file-input" type="file" accept="image/*" multiple @change="handleNoteImagesChange">
+            <label class="image-add-btn" for="noteImageInput">添加图片</label>
+          </div>
+          <div v-if="noteImages.length" class="note-images">
+            <div v-for="(image, index) in noteImages" :key="`${index}-${image.slice(0, 24)}`" class="note-image">
+              <img :src="image" alt="备注图片">
+              <button type="button" @click="removeNoteImage(index)">删除</button>
+            </div>
+          </div>
           <p class="note-status">{{ noteStatus }}</p>
         </section>
       </div>
@@ -182,7 +198,8 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import axios from 'axios'
-import PetTypeIcon from '../components/PetTypeIcon.vue'
+import PetAvatar from '../components/PetAvatar.vue'
+import { fileToCompressedDataUrl } from '../utils/image'
 
 const pets = ref([])
 const selectedPetId = ref('')
@@ -190,8 +207,12 @@ const feedingPlan = ref(null)
 const healthRecords = ref([])
 const latestAlerts = ref([])
 const noteDraft = ref('')
+const noteImages = ref([])
 const noteSaving = ref(false)
 const noteStatus = ref('')
+const noteImageInput = ref(null)
+const checkedFeedings = ref({})
+const todayKey = formatDate(new Date())
 
 const breedTypeMap = {
   美短: 'cat',
@@ -235,6 +256,34 @@ const pendingFeedText = computed(() => {
   if (frequency <= 2) return '建议安排早晚两次喂食'
   return '建议分早、中、晚多次少量喂食'
 })
+
+const todayFeedingTimes = computed(() => {
+  if (!feedingPlan.value) return []
+  return feedingTimes(feedingPlan.value.frequency)
+})
+
+const checkedFeedingCount = computed(() => (
+  todayFeedingTimes.value.filter(time => isFeedingChecked(time)).length
+))
+
+const todayCheckinText = computed(() => {
+  const total = todayFeedingTimes.value.length
+  if (!feedingPlan.value || total === 0) return '今日已打卡（0/0）'
+  return `今日已打卡（${checkedFeedingCount.value}/${total}）`
+})
+
+const showFeedingCheckinLink = computed(() => (
+  Boolean(feedingPlan.value)
+    && todayFeedingTimes.value.length > 0
+    && checkedFeedingCount.value < todayFeedingTimes.value.length
+))
+
+const feedingCheckinLink = computed(() => ({
+  path: '/feeding',
+  query: {
+    petId: selectedPetId.value
+  }
+}))
 
 const sortedHealthRecords = computed(() => {
   return [...healthRecords.value].sort((a, b) => new Date(b.date) - new Date(a.date))
@@ -354,7 +403,7 @@ const formatWeight = (weight) => {
   return Number.isFinite(numberValue) ? `${numberValue.toFixed(1)} kg` : '-'
 }
 
-const formatDate = (date) => {
+function formatDate(date) {
   const value = new Date(date)
   const year = value.getFullYear()
   const month = String(value.getMonth() + 1).padStart(2, '0')
@@ -375,9 +424,43 @@ const getRecentWeekDateKeys = () => {
 
 const isAbnormalRecord = (record) => record.mentalState === 'poor' || record.defecation !== 'normal'
 
+const checkinStorageKey = () => `pet-feeding-checkins-${todayKey}`
+
+const loadCheckins = () => {
+  try {
+    checkedFeedings.value = JSON.parse(localStorage.getItem(checkinStorageKey()) || '{}')
+  } catch (error) {
+    checkedFeedings.value = {}
+  }
+}
+
+const feedingTimes = (frequency) => {
+  const count = Number(frequency)
+  if (!Number.isFinite(count) || count <= 0) return []
+  if (count <= 1) return ['18:00']
+  if (count === 2) return ['08:00', '19:00']
+  if (count === 3) return ['08:00', '13:00', '19:00']
+  return ['07:30', '12:00', '17:30', '21:00']
+}
+
+const feedingCheckKey = (time) => `${selectedPetId.value}-${time}`
+
+const isFeedingChecked = (time) => Boolean(checkedFeedings.value[feedingCheckKey(time)])
+
 const normalizeHandled = (value) => value === true || value === 1 || value === '1' || value === 'true'
 
-const isAlertHandled = (alert) => normalizeHandled(alert?.handled)
+const getLocalHandledAlertIds = () => {
+  try {
+    const parsed = JSON.parse(localStorage.getItem('pet-handled-alert-ids') || '[]')
+    return Array.isArray(parsed) ? parsed.map(String) : []
+  } catch (error) {
+    return []
+  }
+}
+
+const isAlertHandled = (alert) => (
+  normalizeHandled(alert?.handled) || getLocalHandledAlertIds().includes(String(alert?.id))
+)
 
 const fetchPets = async () => {
   if (!isLoggedIn.value) return
@@ -401,6 +484,7 @@ const fetchDashboardData = async () => {
     healthRecords.value = []
     latestAlerts.value = []
     noteDraft.value = ''
+    noteImages.value = []
     return
   }
 
@@ -424,7 +508,7 @@ const fetchDashboardData = async () => {
 const normalizeAlerts = (alerts) => {
   return (alerts || []).map(alert => ({
     ...alert,
-    handled: normalizeHandled(alert.handled)
+    handled: isAlertHandled(alert)
   }))
 }
 
@@ -437,20 +521,35 @@ const sortAlertsForHome = (a, b) => {
 
 const resetNoteDraft = () => {
   noteDraft.value = selectedPet.value.note || ''
+  noteImages.value = parseNoteImages(selectedPet.value.noteImages)
   noteStatus.value = ''
 }
 
-const savePetNote = async () => {
+const parseNoteImages = (value) => {
+  if (!value) return []
+  try {
+    const parsed = JSON.parse(value)
+    return Array.isArray(parsed) ? parsed : []
+  } catch (error) {
+    return []
+  }
+}
+
+const stringifyNoteImages = () => JSON.stringify(noteImages.value)
+
+const savePetNote = async (successText = '备注已保存') => {
   if (!selectedPetId.value) return
 
   try {
     noteSaving.value = true
     const response = await axios.post(`/api/pets/${selectedPetId.value}/note`, {
-      note: noteDraft.value
+      note: noteDraft.value,
+      noteImages: stringifyNoteImages()
     })
     pets.value = pets.value.map(pet => String(pet.id) === String(selectedPetId.value) ? response.data : pet)
     noteDraft.value = response.data.note || ''
-    noteStatus.value = '备注已保存'
+    noteImages.value = parseNoteImages(response.data.noteImages)
+    noteStatus.value = successText
   } catch (error) {
     console.error('保存宠物备注失败', error)
     noteStatus.value = '保存失败，请稍后重试'
@@ -459,9 +558,50 @@ const savePetNote = async () => {
   }
 }
 
-onMounted(fetchPets)
+const handleNoteImagesChange = async (event) => {
+  const selectedFiles = Array.from(event.target.files || [])
+  const remainingSlots = Math.max(0, 6 - noteImages.value.length)
+  if (remainingSlots === 0) {
+    noteStatus.value = '最多添加 6 张图片'
+    event.target.value = ''
+    return
+  }
+
+  const files = selectedFiles.slice(0, remainingSlots)
+  if (files.length === 0) {
+    event.target.value = ''
+    return
+  }
+
+  try {
+    noteStatus.value = '图片处理中...'
+    const images = await Promise.all(
+      files.map(file => fileToCompressedDataUrl(file, 760, 0.7))
+    )
+    noteImages.value = [...noteImages.value, ...images]
+    noteStatus.value = selectedFiles.length > files.length
+      ? `已添加前 ${files.length} 张图片，正在保存...`
+      : '图片已添加，正在保存...'
+    await savePetNote('图片已保存')
+  } catch (error) {
+    noteStatus.value = error.message || '图片读取失败'
+  } finally {
+    event.target.value = ''
+  }
+}
+
+const removeNoteImage = (index) => {
+  noteImages.value = noteImages.value.filter((_, itemIndex) => itemIndex !== index)
+  noteStatus.value = '图片已移除，点击保存备注后生效'
+}
+
+onMounted(() => {
+  loadCheckins()
+  fetchPets()
+})
 
 watch(selectedPetId, () => {
+  loadCheckins()
   resetNoteDraft()
   fetchDashboardData()
 })
@@ -802,6 +942,24 @@ h1 {
   border-radius: 6px;
 }
 
+.schedule-row .checkin-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.checkin-summary a {
+  margin-left: auto;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background-color: #edf7ef;
+  color: #2e7d52;
+  font-size: 12px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
 .dot {
   display: inline-block;
   width: 8px;
@@ -893,6 +1051,65 @@ h1 {
   color: #25332b;
   font-size: 14px;
   line-height: 1.6;
+}
+
+.note-image-actions {
+  margin-top: 10px;
+}
+
+.file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.note-panel .image-add-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background-color: #edf7ef;
+  color: #2e7d52;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.note-images {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.note-image {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 1;
+  border: 1px solid #d6ded9;
+  border-radius: 8px;
+  background-color: #f7faf8;
+}
+
+.note-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.note-image button {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  padding: 4px 7px;
+  border-radius: 5px;
+  background-color: rgba(31, 45, 38, 0.78);
+  color: white;
+  font-size: 12px;
 }
 
 .note-panel textarea:focus {

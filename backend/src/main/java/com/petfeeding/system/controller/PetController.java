@@ -61,7 +61,17 @@ public class PetController {
     @RequestMapping(value = "/{id}/note", method = {RequestMethod.PATCH, RequestMethod.POST})
     public ResponseEntity<?> updatePetNote(@PathVariable Long id, @RequestBody Map<String, String> payload) {
         try {
-            Pet updatedPet = petService.updateNote(id, payload.get("note"));
+            Pet updatedPet = petService.updateNote(id, payload.get("note"), payload.get("noteImages"));
+            return ResponseEntity.ok(updatedPet);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Collections.singletonMap("message", e.getMessage()));
+        }
+    }
+
+    @RequestMapping(value = "/{id}/photo", method = {RequestMethod.PATCH, RequestMethod.POST})
+    public ResponseEntity<?> updatePetPhoto(@PathVariable Long id, @RequestBody Map<String, String> payload) {
+        try {
+            Pet updatedPet = petService.updatePhoto(id, payload.getOrDefault("photo", ""));
             return ResponseEntity.ok(updatedPet);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Collections.singletonMap("message", e.getMessage()));

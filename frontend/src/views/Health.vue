@@ -1,55 +1,72 @@
 <template>
   <div class="health">
-    <h1>健康监测</h1>
-    <div class="pet-selector">
-      <label for="petId">选择宠物：</label>
-      <select id="petId" v-model="selectedPetId" @change="fetchHealthData">
-        <option value="">请选择宠物</option>
-        <option v-for="pet in pets" :key="pet.id" :value="pet.id">
-          {{ pet.name }}
-        </option>
-      </select>
-    </div>
+    <section class="page-hero">
+      <div class="hero-title">
+        <span class="hero-mark"></span>
+        <div>
+          <p>Health Intelligence</p>
+          <h1>健康监测</h1>
+        </div>
+      </div>
+      <div class="health-selector">
+        <PetAvatar :pet="selectedHealthPet" :type="selectedHealthPet.petType || 'cat'" size="sm" circle />
+        <select id="petId" v-model="selectedPetId" aria-label="选择宠物" @change="fetchHealthData">
+          <option value="">请选择宠物</option>
+          <option v-for="pet in pets" :key="pet.id" :value="pet.id">
+            {{ pet.name }}
+          </option>
+        </select>
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      </div>
+    </section>
 
-    <div v-if="selectedPetId" class="health-content">
+    <div class="health-content" :class="{ placeholder: !hasSelectedPet }">
       <div class="health-form">
         <h2>记录健康数据</h2>
         <form @submit.prevent="recordHealthData">
           <div class="form-group">
             <label for="recordDate">记录日期</label>
-            <input type="date" id="recordDate" v-model="healthData.date" :max="today" required>
+            <input v-if="hasSelectedPet" type="date" id="recordDate" v-model="healthData.date" :max="today" required>
+            <input v-else type="text" value="—" disabled class="placeholder-input">
           </div>
           <div class="form-group">
             <label for="weight">体重（kg）</label>
-            <input type="number" id="weight" v-model.number="healthData.weight" min="0.1" step="0.1" required>
+            <input v-if="hasSelectedPet" type="number" id="weight" v-model.number="healthData.weight" min="0.1" step="0.1" required>
+            <input v-else type="text" value="—" disabled class="placeholder-input">
           </div>
           <div class="form-group">
             <label for="waterIntake">饮水量（ml/天）</label>
-            <input type="number" id="waterIntake" v-model.number="healthData.waterIntake" min="0" step="1" required>
+            <input v-if="hasSelectedPet" type="number" id="waterIntake" v-model.number="healthData.waterIntake" min="0" step="1" required>
+            <input v-else type="text" value="—" disabled class="placeholder-input">
           </div>
           <div class="form-group">
             <label for="foodIntake">进食量（g/天）</label>
-            <input type="number" id="foodIntake" v-model.number="healthData.foodIntake" min="0" step="1" required>
+            <input v-if="hasSelectedPet" type="number" id="foodIntake" v-model.number="healthData.foodIntake" min="0" step="1" required>
+            <input v-else type="text" value="—" disabled class="placeholder-input">
           </div>
           <div class="form-group">
             <label for="mentalState">精神状态</label>
-            <select id="mentalState" v-model="healthData.mentalState" required>
+            <select v-if="hasSelectedPet" id="mentalState" v-model="healthData.mentalState" required>
               <option value="excellent">优秀</option>
               <option value="good">良好</option>
               <option value="normal">正常</option>
               <option value="poor">不佳</option>
             </select>
+            <input v-else type="text" value="—" disabled class="placeholder-input">
           </div>
           <div class="form-group">
             <label for="defecation">排便情况</label>
-            <select id="defecation" v-model="healthData.defecation" required>
+            <select v-if="hasSelectedPet" id="defecation" v-model="healthData.defecation" required>
               <option value="normal">正常</option>
               <option value="soft">偏软</option>
               <option value="hard">偏硬</option>
               <option value="diarrhea">腹泻</option>
             </select>
+            <input v-else type="text" value="—" disabled class="placeholder-input">
           </div>
-          <button type="submit">保存</button>
+          <button type="submit" :disabled="!hasSelectedPet">{{ hasSelectedPet ? '保存' : '待选择宠物' }}</button>
         </form>
       </div>
 
@@ -60,8 +77,8 @@
           <div class="empty-illustration" aria-hidden="true">
             <span></span>
           </div>
-          <h3>还没有健康数据</h3>
-          <p>记录一次体重、饮水量和进食量后，这里会展示最近一周趋势。</p>
+          <h3>{{ emptyStateTitle }}</h3>
+          <p>{{ emptyStateText }}</p>
         </div>
 
         <div v-if="weeklyWarning" class="weekly-warning">
@@ -69,7 +86,7 @@
         </div>
 
         <div class="weekly-summary" aria-label="最近一周状态灯">
-          <div v-for="day in recentWeekData" :key="day.date" class="summary-item" :class="day.statusClass">
+          <div v-for="day in visibleWeekData" :key="day.date" class="summary-item" :class="day.statusClass">
             <strong>{{ day.shortDate }}</strong>
             <span><i class="state-dot"></i>{{ day.statusLabel }}</span>
             <small>体重：{{ day.weightLabel }}</small>
@@ -120,6 +137,7 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import axios from 'axios'
 import * as echarts from 'echarts'
+import PetAvatar from '../components/PetAvatar.vue'
 
 const pets = ref([])
 const selectedPetId = ref('')
@@ -130,7 +148,33 @@ const recentWeekData = ref([])
 const weeklyWarning = ref(false)
 const weightChart = ref(null)
 const handlingAlertId = ref(null)
+const handledAlertIds = ref(loadHandledAlertIds())
 let chartInstance = null
+
+const selectedHealthPet = computed(() => {
+  return selectedPetId.value
+    ? pets.value.find(pet => String(pet.id) === String(selectedPetId.value)) || {}
+    : {}
+})
+
+const hasSelectedPet = computed(() => Boolean(selectedPetId.value))
+
+const visibleWeekData = computed(() => {
+  if (!hasSelectedPet.value) {
+    return buildPlaceholderWeekData()
+  }
+  return recentWeekData.value.length > 0 ? recentWeekData.value : buildRecentWeekData([])
+})
+
+const emptyStateTitle = computed(() => (
+  hasSelectedPet.value ? '还没有健康数据' : '请选择宠物'
+))
+
+const emptyStateText = computed(() => (
+  hasSelectedPet.value
+    ? '记录一次体重、饮水量和进食量后，这里会展示最近一周趋势。'
+    : '选择宠物后，这里会生成最近一周健康数据模板。'
+))
 
 const mentalStateLabels = {
   excellent: '优秀',
@@ -157,7 +201,9 @@ function createEmptyHealthData() {
   }
 }
 
-const hasRecentHealthData = computed(() => recentWeekData.value.some(day => day.statusClass !== 'empty'))
+const hasRecentHealthData = computed(() => (
+  hasSelectedPet.value && recentWeekData.value.some(day => day.statusClass !== 'empty')
+))
 
 function formatDate(date) {
   const value = new Date(date)
@@ -189,6 +235,8 @@ const fetchPets = async () => {
 }
 
 const recordHealthData = async () => {
+  if (!selectedPetId.value) return
+
   try {
     await axios.post('/api/health-records', {
       petId: Number(selectedPetId.value),
@@ -235,7 +283,7 @@ const fetchHealthData = async () => {
 const normalizeAlerts = (alerts) => {
   return (alerts || []).map(alert => ({
     ...alert,
-    handled: normalizeHandled(alert.handled)
+    handled: normalizeHandled(alert.handled) || isAlertIdHandledLocally(alert.id)
   }))
 }
 
@@ -243,23 +291,40 @@ const normalizeHandled = (value) => value === true || value === 1 || value === '
 
 const isAlertHandled = (alert) => normalizeHandled(alert?.handled)
 
+function loadHandledAlertIds() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem('pet-handled-alert-ids') || '[]')
+    return Array.isArray(parsed) ? parsed.map(String) : []
+  } catch (error) {
+    return []
+  }
+}
+
+const isAlertIdHandledLocally = (alertId) => handledAlertIds.value.includes(String(alertId))
+
+const persistHandledAlertId = (alertId) => {
+  const id = String(alertId)
+  if (!handledAlertIds.value.includes(id)) {
+    handledAlertIds.value = [...handledAlertIds.value, id]
+    localStorage.setItem('pet-handled-alert-ids', JSON.stringify(handledAlertIds.value))
+  }
+}
+
 const markAlertHandled = async (alert) => {
   if (!alert?.id || isAlertHandled(alert) || handlingAlertId.value === alert.id) return
 
-  const previousAlerts = healthAlerts.value.map(item => ({ ...item }))
   try {
     handlingAlertId.value = alert.id
+    persistHandledAlertId(alert.id)
     healthAlerts.value = healthAlerts.value.map(item => (
       item.id === alert.id ? { ...item, handled: true } : item
     ))
-    const response = await axios.post(`/api/health-alerts/${alert.id}/handled`)
+    const response = await axios.patch(`/api/health-alerts/${alert.id}/handled`)
     healthAlerts.value = healthAlerts.value.map(item => (
       item.id === alert.id ? { ...item, ...response.data, handled: true } : item
     ))
-    await fetchHealthData()
   } catch (error) {
     console.error('标记预警失败', error)
-    healthAlerts.value = previousAlerts
   } finally {
     handlingAlertId.value = null
   }
@@ -311,6 +376,22 @@ const buildRecentWeekData = (records) => {
       abnormal
     }
   })
+}
+
+const buildPlaceholderWeekData = () => {
+  return getRecentWeekDateKeys().map(date => ({
+    date,
+    shortDate: date.slice(5),
+    weight: null,
+    weightLabel: '—',
+    waterIntakeLabel: '—',
+    foodIntakeLabel: '—',
+    mentalStateLabel: '—',
+    defecationLabel: '—',
+    statusLabel: '—',
+    statusClass: 'empty placeholder',
+    abnormal: false
+  }))
 }
 
 const getRecentWeekDateKeys = () => {
@@ -440,25 +521,81 @@ watch(selectedPetId, (newId) => {
 }
 
 h1 {
-  color: #333;
-  margin-bottom: 20px;
+  color: #1f2d26;
+  font-size: 28px;
+  line-height: 1.2;
 }
 
-.pet-selector {
-  margin-bottom: 30px;
+.page-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+  padding: 18px;
+  border: 1px solid #e0e7e3;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #ffffff 0%, #f7faf8 100%);
 }
 
-.pet-selector label {
-  margin-right: 10px;
-  font-size: 16px;
-  color: #333;
+.hero-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
-.pet-selector select {
-  padding: 8px 12px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  font-size: 16px;
+.hero-title p {
+  color: #60756a;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  margin-bottom: 4px;
+}
+
+.hero-mark {
+  width: 12px;
+  height: 42px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #10b981, #3b82f6);
+}
+
+.health-selector {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 5px 40px 5px 8px;
+  border: 1px solid #dce5df;
+  border-radius: 12px;
+  background-color: rgba(255, 255, 255, 0.88);
+}
+
+.health-selector select {
+  min-width: 220px;
+  padding: 0;
+  border: none;
+  outline: none;
+  appearance: none;
+  background-color: transparent;
+  color: #25332b;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.health-selector svg {
+  position: absolute;
+  right: 12px;
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: #66766c;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
 }
 
 .health-content {
@@ -510,6 +647,30 @@ button {
 
 button:hover {
   background-color: #45a049;
+}
+
+button:disabled,
+button:disabled:hover {
+  background-color: #c8d0ca;
+  color: #7b8a81;
+  cursor: not-allowed;
+}
+
+.placeholder-input:disabled {
+  border-color: #e0e7e3;
+  background-color: #f7faf8;
+  color: #a8b5ad;
+  font-weight: 700;
+}
+
+.health-content.placeholder .health-form,
+.health-content.placeholder .health-charts {
+  background-color: #fbfcfb;
+}
+
+.health-content.placeholder .health-form h2,
+.health-content.placeholder .health-charts h2 {
+  color: #8d9b92;
 }
 
 .health-charts {
@@ -653,6 +814,12 @@ button:hover {
   color: #777;
 }
 
+.summary-item.placeholder {
+  background-color: #f3f6f4;
+  border-color: #e0e7e3;
+  color: #9aa8a0;
+}
+
 .state-dot {
   display: inline-block;
   width: 8px;
@@ -745,6 +912,17 @@ button:hover {
 }
 
 @media (max-width: 900px) {
+  .page-hero {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .health-selector,
+  .health-selector select {
+    width: 100%;
+    min-width: 0;
+  }
+
   .health-content {
     grid-template-columns: 1fr;
   }

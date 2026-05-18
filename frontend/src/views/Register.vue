@@ -15,6 +15,7 @@
         <input type="email" id="email" v-model="form.email" required>
       </div>
       <button type="submit">注册</button>
+      <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
       <p>已有账号？<router-link to="/login">立即登录</router-link></p>
     </form>
   </div>
@@ -31,13 +32,19 @@ const form = ref({
   password: '',
   email: ''
 })
+const errorMessage = ref('')
 
 const handleRegister = async () => {
   try {
-    await axios.post('/api/auth/register', form.value)
+    errorMessage.value = ''
+    await axios.post('/api/auth/register', {
+      username: form.value.username.trim(),
+      password: form.value.password,
+      email: form.value.email.trim()
+    })
     router.push('/login')
   } catch (error) {
-    alert('注册失败，请检查输入信息')
+    errorMessage.value = error.response?.data?.message || '注册失败，请检查输入信息'
   }
 }
 </script>
@@ -97,6 +104,13 @@ p {
   text-align: center;
   margin-top: 15px;
   font-size: 14px;
+}
+
+.error-message {
+  padding: 9px 10px;
+  border-radius: 4px;
+  background-color: #ffebee;
+  color: #c62828;
 }
 
 a {

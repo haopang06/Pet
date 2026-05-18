@@ -21,6 +21,9 @@ CREATE TABLE IF NOT EXISTS pets (
     age INT NOT NULL,
     weight DOUBLE NOT NULL,
     activity_level VARCHAR(50) NOT NULL,
+    note VARCHAR(1000),
+    photo LONGTEXT,
+    note_images LONGTEXT,
     user_id BIGINT,
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
@@ -29,6 +32,8 @@ CREATE TABLE IF NOT EXISTS pets (
 CREATE TABLE IF NOT EXISTS health_records (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     weight DOUBLE NOT NULL,
+    water_intake DOUBLE,
+    food_intake DOUBLE,
     mental_state VARCHAR(50) NOT NULL,
     defecation VARCHAR(50) NOT NULL,
     date DATETIME NOT NULL,
@@ -42,6 +47,7 @@ CREATE TABLE IF NOT EXISTS health_alerts (
     message VARCHAR(255) NOT NULL,
     date DATETIME NOT NULL,
     severity VARCHAR(50) NOT NULL,
+    handled BIT DEFAULT 0,
     pet_id BIGINT,
     FOREIGN KEY (pet_id) REFERENCES pets(id)
 );

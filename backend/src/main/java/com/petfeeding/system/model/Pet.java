@@ -20,6 +20,12 @@ public class Pet {
     private String activityLevel;
     @Column(length = 1000)
     private String note;
+    @Lob
+    @Column(columnDefinition = "LONGTEXT")
+    private String photo;
+    @Lob
+    @Column(columnDefinition = "LONGTEXT")
+    private String noteImages;
 
     @ManyToOne
     @JoinColumn(name = "user_id")
@@ -97,6 +103,22 @@ public class Pet {
 
     public void setNote(String note) {
         this.note = note;
+    }
+
+    public String getPhoto() {
+        return photo;
+    }
+
+    public void setPhoto(String photo) {
+        this.photo = photo;
+    }
+
+    public String getNoteImages() {
+        return noteImages;
+    }
+
+    public void setNoteImages(String noteImages) {
+        this.noteImages = noteImages;
     }
 
     public User getUser() {

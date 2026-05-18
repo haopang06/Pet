@@ -1,7 +1,18 @@
 <template>
   <div class="pets">
-    <h1>宠物信息管理</h1>
-    <button class="add-btn" @click="openCreateForm">添加宠物</button>
+    <section class="page-hero">
+      <div class="hero-title">
+        <span class="hero-mark"></span>
+        <div>
+          <p>Pet Profile Center</p>
+          <h1>宠物信息管理</h1>
+        </div>
+      </div>
+      <div class="hero-summary">
+        <PetAvatar :pet="pets[0] || {}" :type="resolvePetType(pets[0] || {})" size="sm" circle />
+        <span>{{ pets.length > 0 ? `${pets.length} 位成员` : '等待添加成员' }}</span>
+      </div>
+    </section>
 
     <div v-if="loginNotice" class="login-notice">
       <span>还没有用户登录系统</span>
@@ -47,6 +58,18 @@
               <option value="high">高</option>
             </select>
           </div>
+          <div class="form-group photo-group">
+            <label>宠物照片</label>
+            <div class="photo-upload">
+              <PetAvatar :pet="petForm" :type="petForm.petType" size="lg" />
+              <div class="photo-actions">
+                <input id="petPhotoInput" ref="photoInput" class="file-input" type="file" accept="image/*" @change="handlePhotoChange">
+                <label class="upload-btn" for="petPhotoInput">上传照片</label>
+                <button v-if="petForm.photo" type="button" class="ghost-btn" @click="removePhoto">移除照片</button>
+                <p v-if="photoStatus" class="photo-status">{{ photoStatus }}</p>
+              </div>
+            </div>
+          </div>
         </div>
         <div class="form-actions">
           <button type="submit">{{ isEditing ? '保存修改' : '保存' }}</button>
@@ -59,7 +82,7 @@
     <div class="pet-list">
       <div v-for="pet in pets" :key="pet.id" class="pet-card">
         <div class="pet-card-head">
-          <PetTypeIcon :type="resolvePetType(pet)" />
+          <PetAvatar :pet="pet" :type="resolvePetType(pet)" />
           <div>
             <h2>{{ pet.name }}</h2>
             <span>{{ petTypeText(resolvePetType(pet)) }} / {{ pet.breed }}</span>
@@ -80,6 +103,10 @@
           <button @click="deletePet(pet.id)">删除</button>
         </div>
       </div>
+      <button type="button" class="add-pet-card" @click="openCreateForm">
+        <strong>+</strong>
+        <span>添加新成员，开启个性化喂养方案</span>
+      </button>
     </div>
   </div>
 </template>
@@ -88,7 +115,8 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
-import PetTypeIcon from '../components/PetTypeIcon.vue'
+import PetAvatar from '../components/PetAvatar.vue'
+import { fileToCompressedDataUrl } from '../utils/image'
 
 const breedOptions = {
   cat: ['美短', '英短', '金渐层', '银渐层', '布偶', '暹罗', '缅因', '加菲', '波斯', '狸花', '中华田园猫'],
@@ -101,7 +129,8 @@ const createEmptyPet = () => ({
   breed: breedOptions.cat[0],
   age: '',
   weight: '',
-  activityLevel: 'medium'
+  activityLevel: 'medium',
+  photo: ''
 })
 
 const showPetForm = ref(false)
@@ -110,6 +139,8 @@ const errorMessage = ref('')
 const loginNotice = ref(false)
 const editingPetId = ref(null)
 const petForm = ref(createEmptyPet())
+const photoInput = ref(null)
+const photoStatus = ref('')
 const router = useRouter()
 
 const isEditing = computed(() => editingPetId.value !== null)
@@ -196,6 +227,7 @@ const openCreateForm = () => {
   editingPetId.value = null
   petForm.value = createEmptyPet()
   errorMessage.value = ''
+  photoStatus.value = ''
   loginNotice.value = false
   showPetForm.value = true
 }
@@ -205,6 +237,7 @@ const closeForm = () => {
   editingPetId.value = null
   petForm.value = createEmptyPet()
   errorMessage.value = ''
+  photoStatus.value = ''
 }
 
 const goLogin = () => {
@@ -218,7 +251,8 @@ const buildPayload = () => {
     breed: petForm.value.breed,
     age: Number(petForm.value.age),
     weight: Number(petForm.value.weight),
-    activityLevel: petForm.value.activityLevel
+    activityLevel: petForm.value.activityLevel,
+    photo: petForm.value.photo || ''
   }
   const userId = getCurrentUserId()
   if (userId) {
@@ -242,10 +276,13 @@ const savePet = async () => {
       params: getUserParams()
     }
 
+    let response
     if (isEditing.value) {
-      await axios.put(`/api/pets/${editingPetId.value}`, payload, config)
+      response = await axios.put(`/api/pets/${editingPetId.value}`, payload, config)
+      pets.value = pets.value.map(pet => pet.id === editingPetId.value ? response.data : pet)
     } else {
-      await axios.post('/api/pets', payload, config)
+      response = await axios.post('/api/pets', payload, config)
+      pets.value = [...pets.value, response.data]
     }
 
     await fetchPets()
@@ -267,10 +304,57 @@ const editPet = (pet) => {
     breed: options.includes(pet.breed) ? pet.breed : options[0],
     age: pet.age,
     weight: pet.weight,
-    activityLevel: pet.activityLevel || 'medium'
+    activityLevel: pet.activityLevel || 'medium',
+    photo: pet.photo || ''
   }
   errorMessage.value = ''
+  photoStatus.value = ''
   showPetForm.value = true
+}
+
+const handlePhotoChange = async (event) => {
+  const file = event.target.files?.[0]
+  if (!file) return
+
+  try {
+    photoStatus.value = '照片处理中...'
+    petForm.value.photo = await fileToCompressedDataUrl(file, 480, 0.68)
+    if (isEditing.value) {
+      await savePetPhoto()
+    } else {
+      photoStatus.value = '照片已选择，保存宠物后生效'
+    }
+  } catch (error) {
+    errorMessage.value = error.message || '照片读取失败'
+    photoStatus.value = ''
+  } finally {
+    event.target.value = ''
+  }
+}
+
+const savePetPhoto = async () => {
+  if (!isEditing.value) return
+
+  const response = await axios.patch(`/api/pets/${editingPetId.value}/photo`, {
+    photo: petForm.value.photo || ''
+  })
+  pets.value = pets.value.map(pet => pet.id === editingPetId.value ? response.data : pet)
+  photoStatus.value = petForm.value.photo ? '照片已保存' : '照片已移除'
+}
+
+const removePhoto = async () => {
+  petForm.value.photo = ''
+  if (isEditing.value) {
+    try {
+      photoStatus.value = '正在移除照片...'
+      await savePetPhoto()
+    } catch (error) {
+      errorMessage.value = error.response?.data?.message || '照片移除失败'
+      photoStatus.value = ''
+    }
+  } else {
+    photoStatus.value = ''
+  }
 }
 
 const deletePet = async (id) => {
@@ -295,23 +379,57 @@ onMounted(() => {
 }
 
 h1 {
-  color: #333;
-  margin-bottom: 20px;
+  color: #1f2d26;
+  font-size: 28px;
+  line-height: 1.2;
 }
 
-.add-btn {
-  background-color: #4CAF50;
-  color: white;
-  border: none;
-  padding: 10px 20px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 16px;
-  margin-bottom: 20px;
+.page-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+  padding: 18px;
+  border: 1px solid #e0e7e3;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #ffffff 0%, #f7faf8 100%);
 }
 
-.add-btn:hover {
-  background-color: #45a049;
+.hero-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.hero-title p {
+  color: #60756a;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  margin-bottom: 4px;
+}
+
+.hero-mark {
+  width: 12px;
+  height: 42px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #10b981, #3b82f6);
+}
+
+.hero-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 5px 14px 5px 8px;
+  border: 1px solid #dce5df;
+  border-radius: 12px;
+  background-color: rgba(255, 255, 255, 0.88);
+  color: #25332b;
+  font-size: 14px;
+  font-weight: 800;
 }
 
 .login-notice {
@@ -359,6 +477,48 @@ h1 {
   row-gap: 18px;
 }
 
+.photo-group {
+  grid-column: span 3;
+}
+
+.photo-upload {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px;
+  border: 1px dashed #cdd8d1;
+  border-radius: 8px;
+  background-color: #f7faf8;
+}
+
+.photo-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.pet-form .photo-actions button,
+.pet-form .photo-actions .upload-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 0;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
 .form-group {
   margin-bottom: 0;
 }
@@ -400,6 +560,29 @@ input, select {
   color: white;
 }
 
+.pet-form .photo-actions button[type="button"] {
+  background-color: #2e7d52;
+  color: white;
+}
+
+.pet-form .photo-actions .upload-btn {
+  margin-bottom: 0;
+  background-color: #2e7d52;
+  color: white;
+}
+
+.pet-form .photo-actions .ghost-btn[type="button"] {
+  background-color: #e9efeb;
+  color: #4f6358;
+}
+
+.photo-status {
+  flex-basis: 100%;
+  margin: 0;
+  color: #60756a;
+  font-size: 13px;
+}
+
 .error-message {
   color: #f44336;
   margin-top: 10px;
@@ -412,7 +595,9 @@ input, select {
   gap: 20px;
 }
 
-.pet-card {
+.pet-card,
+.add-pet-card {
+  min-height: 214px;
   background-color: white;
   padding: 20px;
   border-radius: 8px;
@@ -514,9 +699,47 @@ input, select {
   color: white;
 }
 
+.add-pet-card {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 10px;
+  border: 2px dashed #cbd6cf;
+  background-color: #fbfcfb;
+  color: #7a8980;
+  cursor: pointer;
+  text-align: center;
+}
+
+.add-pet-card:hover {
+  border-color: #8bb99e;
+  background-color: #f3faf6;
+  color: #2e7d52;
+}
+
+.add-pet-card strong {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background-color: #edf2ef;
+  font-size: 38px;
+  line-height: 1;
+  font-weight: 400;
+}
+
+.add-pet-card span {
+  max-width: 210px;
+  line-height: 1.5;
+  font-size: 15px;
+}
+
 @media (max-width: 760px) {
-  .form-grid {
+  .form-grid,
+  .photo-group {
     grid-template-columns: 1fr;
+    grid-column: span 1;
   }
 }
 </style>

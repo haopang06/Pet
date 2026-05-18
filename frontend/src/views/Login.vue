@@ -11,6 +11,7 @@
         <input type="password" id="password" v-model="form.password" required>
       </div>
       <button type="submit">登录</button>
+      <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
       <p>还没有账号？<router-link to="/register">立即注册</router-link></p>
     </form>
   </div>
@@ -26,16 +27,21 @@ const form = ref({
   username: '',
   password: ''
 })
+const errorMessage = ref('')
 
 const handleLogin = async () => {
   try {
-    const response = await axios.post('/api/auth/login', form.value)
+    errorMessage.value = ''
+    const response = await axios.post('/api/auth/login', {
+      username: form.value.username.trim(),
+      password: form.value.password
+    })
     localStorage.setItem('token', response.data.token)
     localStorage.setItem('userId', response.data.userId)
     localStorage.setItem('username', response.data.username)
     router.push('/')
   } catch (error) {
-    alert('登录失败，请检查用户名和密码')
+    errorMessage.value = error.response?.data?.message || '登录失败，请检查用户名和密码'
   }
 }
 </script>
@@ -95,6 +101,13 @@ p {
   text-align: center;
   margin-top: 15px;
   font-size: 14px;
+}
+
+.error-message {
+  padding: 9px 10px;
+  border-radius: 4px;
+  background-color: #ffebee;
+  color: #c62828;
 }
 
 a {

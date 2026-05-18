@@ -31,6 +31,12 @@ public class PetService {
                 if (pet.getNote() == null) {
                     pet.setNote(existingPet.getNote());
                 }
+                if (pet.getPhoto() == null) {
+                    pet.setPhoto(existingPet.getPhoto());
+                }
+                if (pet.getNoteImages() == null) {
+                    pet.setNoteImages(existingPet.getNoteImages());
+                }
             });
         }
         if (userId != null) {
@@ -53,10 +59,20 @@ public class PetService {
         return petRepository.findById(id).orElse(null);
     }
 
-    public Pet updateNote(Long id, String note) {
+    public Pet updateNote(Long id, String note, String noteImages) {
         Pet pet = petRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("宠物不存在"));
         pet.setNote(note);
+        if (noteImages != null) {
+            pet.setNoteImages(noteImages);
+        }
+        return petRepository.save(pet);
+    }
+
+    public Pet updatePhoto(Long id, String photo) {
+        Pet pet = petRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("宠物不存在"));
+        pet.setPhoto(photo);
         return petRepository.save(pet);
     }
 
