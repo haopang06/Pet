@@ -3,12 +3,14 @@ package com.petfeeding.system.service;
 import com.petfeeding.system.model.Pet;
 import com.petfeeding.system.model.User;
 import com.petfeeding.system.repository.FeedingPlanRepository;
+import com.petfeeding.system.repository.PetDiaryEntryRepository;
 import com.petfeeding.system.repository.PetRepository;
 import com.petfeeding.system.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import javax.transaction.Transactional;
 
 @Service
 public class PetService {
@@ -20,6 +22,9 @@ public class PetService {
 
     @Autowired
     private FeedingPlanRepository feedingPlanRepository;
+
+    @Autowired
+    private PetDiaryEntryRepository petDiaryEntryRepository;
 
     public Pet save(Pet pet) {
         return petRepository.save(pet);
@@ -76,8 +81,10 @@ public class PetService {
         return petRepository.save(pet);
     }
 
+    @Transactional
     public void deleteById(Long id) {
         feedingPlanRepository.findByPetId(id).ifPresent(feedingPlanRepository::delete);
+        petDiaryEntryRepository.deleteByPet_Id(id);
         petRepository.deleteById(id);
     }
 }

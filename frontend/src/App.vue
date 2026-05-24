@@ -7,10 +7,13 @@
         <router-link to="/pets">宠物信息</router-link>
         <router-link to="/feeding">智能喂养</router-link>
         <router-link to="/health">健康监测</router-link>
+        <router-link to="/diary">宠物日记</router-link>
       </nav>
       <div class="top-actions">
         <div v-if="isLoggedIn" class="user-panel">
-          <div class="avatar">{{ avatarText }}</div>
+          <router-link class="avatar-link" to="/profile" title="个人详情">
+            <UserAvatar :avatar="avatar" :name="username" size="sm" />
+          </router-link>
           <span class="username">{{ username }}</span>
           <button type="button" class="logout-btn" @click="logout">登出</button>
         </div>
@@ -27,34 +30,27 @@
 <script setup>
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useSessionStore } from './stores/session'
+import UserAvatar from './components/UserAvatar.vue'
 
 const route = useRoute()
 const router = useRouter()
+const sessionStore = useSessionStore()
+
+sessionStore.hydrate()
 
 const showTopBar = computed(() => !['/login', '/register'].includes(route.path))
 
-const username = computed(() => {
-  route.fullPath
-  return localStorage.getItem('username') || ''
-})
-
-const isLoggedIn = computed(() => {
-  route.fullPath
-  return Boolean(localStorage.getItem('token') && localStorage.getItem('userId'))
-})
-
-const avatarText = computed(() => {
-  return username.value ? username.value.slice(0, 1).toUpperCase() : '用'
-})
+const username = computed(() => sessionStore.username)
+const avatar = computed(() => sessionStore.avatar)
+const isLoggedIn = computed(() => sessionStore.isLoggedIn)
 
 const goLogin = () => {
   router.push('/login')
 }
 
 const logout = () => {
-  localStorage.removeItem('token')
-  localStorage.removeItem('userId')
-  localStorage.removeItem('username')
+  sessionStore.clearSession()
   router.push('/login')
 }
 </script>
@@ -136,16 +132,12 @@ body {
   gap: 10px;
 }
 
-.avatar {
-  width: 32px;
-  height: 32px;
-  display: flex;
+.avatar-link {
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background-color: #2e7d52;
-  color: white;
-  font-weight: 700;
+  text-decoration: none;
 }
 
 .username {

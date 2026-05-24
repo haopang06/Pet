@@ -2,7 +2,6 @@
   <div class="home">
     <section class="dashboard-head">
       <div>
-        <p class="eyebrow">今日概览</p>
         <h1>宠物智能喂养控制台</h1>
       </div>
       <div class="head-actions">
@@ -40,8 +39,8 @@
         </div>
 
         <div class="status-tags">
-          <span>{{ selectedPet.age ?? '-' }} 岁</span>
-          <span>{{ formatWeight(selectedPet.weight) }}</span>
+          <span>{{ selectedPet.age ?? '-' }}岁</span>
+          <span>{{ formatWeightCompact(selectedPet.weight) }}</span>
           <span class="activity-badge" :class="activityLevelClass(selectedPet.activityLevel)">
             活动量 {{ activityLevelText(selectedPet.activityLevel) }}
           </span>
@@ -55,9 +54,19 @@
             :class="{ active: String(pet.id) === String(selectedPetId) }"
             @click="selectedPetId = String(pet.id)"
           >
-            <PetAvatar :pet="pet" :type="resolvePetType(pet)" size="sm" />
-            <span>{{ pet.name }}</span>
-            <small>{{ pet.breed }}</small>
+            <i v-if="isPetFeedingIncomplete(pet)" class="pet-checkin-alert" aria-label="喂养打卡未完成">!</i>
+            <div class="pet-avatar-slot">
+              <PetAvatar :pet="pet" :type="resolvePetType(pet)" size="sm" />
+            </div>
+            <span class="pet-card-name">{{ pet.name }}</span>
+            <small class="pet-card-breed">{{ pet.breed }}</small>
+            <div class="pet-card-meta">
+              <span>{{ pet.age ?? '-' }}岁</span>
+              <span>{{ formatWeightCompact(pet.weight) }}</span>
+              <span class="activity-badge" :class="activityLevelClass(pet.activityLevel)">
+                活动量 {{ activityLevelText(pet.activityLevel) }}
+              </span>
+            </div>
           </button>
         </div>
       </aside>
@@ -190,6 +199,10 @@
           <span>健康监测</span>
           <strong>{{ activeAlertCount }} 条未处理</strong>
         </router-link>
+        <router-link to="/diary">
+          <span>宠物日记</span>
+          <strong>记录</strong>
+        </router-link>
       </section>
     </section>
   </div>
@@ -204,6 +217,7 @@ import { fileToCompressedDataUrl } from '../utils/image'
 const pets = ref([])
 const selectedPetId = ref('')
 const feedingPlan = ref(null)
+const feedingPlansByPetId = ref({})
 const healthRecords = ref([])
 const latestAlerts = ref([])
 const noteDraft = ref('')
@@ -358,7 +372,7 @@ const petTypeText = (petType) => {
 const activityLevelText = (activityLevel) => {
   const labels = {
     low: '低',
-    medium: '中',
+    medium: '适中',
     high: '高'
   }
   return labels[activityLevel] || activityLevel || '-'
@@ -401,6 +415,11 @@ const formatNumber = (value) => {
 const formatWeight = (weight) => {
   const numberValue = Number(weight)
   return Number.isFinite(numberValue) ? `${numberValue.toFixed(1)} kg` : '-'
+}
+
+const formatWeightCompact = (weight) => {
+  const numberValue = Number(weight)
+  return Number.isFinite(numberValue) ? `${numberValue.toFixed(1)}kg` : '-'
 }
 
 function formatDate(date) {
@@ -447,6 +466,21 @@ const feedingCheckKey = (time) => `${selectedPetId.value}-${time}`
 
 const isFeedingChecked = (time) => Boolean(checkedFeedings.value[feedingCheckKey(time)])
 
+const petFeedingCheckKey = (petId, time) => `${petId}-${time}`
+
+const isPetFeedingChecked = (petId, time) => Boolean(checkedFeedings.value[petFeedingCheckKey(petId, time)])
+
+const getPetFeedingPlan = (pet) => {
+  const petId = String(pet?.id || '')
+  return feedingPlansByPetId.value[petId] || (petId === String(selectedPetId.value) ? feedingPlan.value : null)
+}
+
+const isPetFeedingIncomplete = (pet) => {
+  const plan = getPetFeedingPlan(pet)
+  const times = feedingTimes(plan?.frequency)
+  return times.length > 0 && times.some(time => !isPetFeedingChecked(pet.id, time))
+}
+
 const normalizeHandled = (value) => value === true || value === 1 || value === '1' || value === 'true'
 
 const getLocalHandledAlertIds = () => {
@@ -473,8 +507,31 @@ const fetchPets = async () => {
     if (pets.value.length > 0 && !selectedPetId.value) {
       selectedPetId.value = String(pets.value[0].id)
     }
+    await fetchAllFeedingPlans()
   } catch (error) {
     console.error('获取宠物列表失败', error)
+  }
+}
+
+const fetchAllFeedingPlans = async () => {
+  if (!pets.value.length) {
+    feedingPlansByPetId.value = {}
+    return
+  }
+
+  try {
+    const responses = await Promise.allSettled(
+      pets.value.map(pet => axios.get(`/api/feeding-plan/${pet.id}`))
+    )
+    const nextPlans = {}
+    responses.forEach((result, index) => {
+      if (result.status === 'fulfilled' && result.value?.data) {
+        nextPlans[String(pets.value[index].id)] = result.value.data
+      }
+    })
+    feedingPlansByPetId.value = nextPlans
+  } catch (error) {
+    console.error('获取全部喂养方案失败', error)
   }
 }
 
@@ -495,6 +552,10 @@ const fetchDashboardData = async () => {
       axios.get(`/api/health-alerts/${selectedPetId.value}`)
     ])
     feedingPlan.value = feedingResponse.data
+    feedingPlansByPetId.value = {
+      ...feedingPlansByPetId.value,
+      [String(selectedPetId.value)]: feedingResponse.data
+    }
     healthRecords.value = recordsResponse.data || []
     latestAlerts.value = normalizeAlerts(alertsResponse.data).sort(sortAlertsForHome).slice(0, 3)
   } catch (error) {
@@ -622,7 +683,6 @@ watch(selectedPetId, () => {
   margin-bottom: 18px;
 }
 
-.eyebrow,
 .section-label {
   color: #60756a;
   font-size: 13px;
@@ -792,18 +852,24 @@ h1 {
 }
 
 .status-tags {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
   margin: 16px 0;
 }
 
 .status-tags span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
   padding: 6px 9px;
   border-radius: 6px;
   background-color: #f0f6f2;
   color: #2f5e43;
   font-size: 13px;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .status-tags .activity-badge {
@@ -833,16 +899,24 @@ h1 {
 .pet-list button {
   display: grid;
   grid-template-columns: 38px minmax(0, 1fr);
+  grid-template-rows: auto auto auto;
   column-gap: 10px;
-  row-gap: 2px;
+  row-gap: 4px;
   align-items: center;
   width: 100%;
-  padding: 10px;
+  padding: 12px 34px 12px 12px;
   border: 1px solid #e1e7e4;
   border-radius: 6px;
   background-color: #fbfcfb;
   text-align: left;
   cursor: pointer;
+  position: relative;
+}
+
+.pet-avatar-slot {
+  grid-column: 1;
+  grid-row: 1 / span 3;
+  align-self: center;
 }
 
 .pet-list button.active {
@@ -850,22 +924,71 @@ h1 {
   background-color: #f1f8f4;
 }
 
-.pet-list span,
-.pet-list small {
+.pet-card-name,
+.pet-card-breed {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.pet-list span {
+.pet-card-name {
+  grid-column: 2;
+  grid-row: 1;
   color: #1f2d26;
   font-weight: 700;
 }
 
-.pet-list small {
+.pet-card-breed {
   grid-column: 2;
+  grid-row: 2;
   color: #738278;
+}
+
+.pet-card-meta {
+  grid-column: 2;
+  grid-row: 3;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.pet-card-meta span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 7px;
+  border-radius: 6px;
+  background-color: #eef5f1;
+  color: #3f5c4c;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.pet-card-meta .activity-badge {
+  font-weight: 700;
+}
+
+.pet-list button.active .pet-card-meta span {
+  background-color: rgba(46, 125, 82, 0.08);
+}
+
+.pet-checkin-alert {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background-color: #ef4444;
+  color: white;
+  font-size: 14px;
+  font-weight: 800;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.25);
 }
 
 .main-panels {

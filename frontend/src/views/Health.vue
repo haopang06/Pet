@@ -10,7 +10,7 @@
       </div>
       <div class="health-selector">
         <PetAvatar :pet="selectedHealthPet" :type="selectedHealthPet.petType || 'cat'" size="sm" circle />
-        <select id="petId" v-model="selectedPetId" aria-label="选择宠物" @change="fetchHealthData">
+        <select id="petId" v-model="selectedPetId" aria-label="选择宠物">
           <option value="">请选择宠物</option>
           <option v-for="pet in pets" :key="pet.id" :value="pet.id">
             {{ pet.name }}
@@ -70,8 +70,23 @@
         </form>
       </div>
 
-      <div class="health-charts">
-        <h2>最近一周健康数据</h2>
+      <div class="health-sidepanels">
+        <div class="health-charts">
+        <div class="chart-header">
+          <h2>最近一周健康数据</h2>
+          <div class="chart-tabs" aria-label="健康趋势切换">
+            <button
+              v-for="mode in chartModes"
+              :key="mode.key"
+              type="button"
+              :class="{ active: activeChartMetric === mode.key }"
+              :disabled="!hasRecentHealthData"
+              @click="activeChartMetric = mode.key"
+            >
+              {{ mode.label }}
+            </button>
+          </div>
+        </div>
         <div v-if="hasRecentHealthData" id="weightChart" ref="weightChart" class="chart"></div>
         <div v-else class="health-empty">
           <div class="empty-illustration" aria-hidden="true">
@@ -128,6 +143,8 @@
             </div>
           </div>
         </div>
+        </div>
+
       </div>
     </div>
   </div>
@@ -149,6 +166,7 @@ const weeklyWarning = ref(false)
 const weightChart = ref(null)
 const handlingAlertId = ref(null)
 const handledAlertIds = ref(loadHandledAlertIds())
+const activeChartMetric = ref('weight')
 let chartInstance = null
 
 const selectedHealthPet = computed(() => {
@@ -190,6 +208,51 @@ const defecationLabels = {
   diarrhea: '腹泻'
 }
 
+const defecationScores = {
+  normal: 4,
+  soft: 3,
+  hard: 2,
+  diarrhea: 1
+}
+
+const defecationScoreLabels = {
+  4: '正常',
+  3: '偏软',
+  2: '偏硬',
+  1: '腹泻'
+}
+
+const chartModes = [
+  {
+    key: 'weight',
+    label: '体重',
+    legend: '体重',
+    axisName: '体重 (kg)',
+    unit: 'kg',
+    color: '#2e7d52'
+  },
+  {
+    key: 'waterIntake',
+    label: '饮水量',
+    legend: '饮水量',
+    axisName: '饮水量 (ml/天)',
+    unit: 'ml',
+    color: '#2563eb'
+  },
+  {
+    key: 'defecation',
+    label: '排便情况',
+    legend: '排便情况',
+    axisName: '排便情况',
+    unit: '',
+    color: '#d97706'
+  }
+]
+
+const activeChartMode = computed(() => (
+  chartModes.find(mode => mode.key === activeChartMetric.value) || chartModes[0]
+))
+
 function createEmptyHealthData() {
   return {
     date: formatDate(new Date()),
@@ -206,6 +269,9 @@ const hasRecentHealthData = computed(() => (
 ))
 
 function formatDate(date) {
+  if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}/.test(date)) {
+    return date.slice(0, 10)
+  }
   const value = new Date(date)
   const year = value.getFullYear()
   const month = String(value.getMonth() + 1).padStart(2, '0')
@@ -270,7 +336,7 @@ const fetchHealthData = async () => {
 
     await nextTick()
     if (weekData.some(day => day.statusClass !== 'empty')) {
-      renderWeightChart(weekData)
+      renderHealthChart(weekData)
     } else if (chartInstance) {
       chartInstance.dispose()
       chartInstance = null
@@ -279,6 +345,37 @@ const fetchHealthData = async () => {
     console.error('获取健康数据失败', error)
   }
 }
+
+const clearHealthDashboard = () => {
+  recentWeekData.value = []
+  healthAlerts.value = []
+  weeklyWarning.value = false
+  if (chartInstance) {
+    chartInstance.dispose()
+    chartInstance = null
+  }
+}
+
+const handlePetChange = async () => {
+  healthData.value = createEmptyHealthData()
+  if (!selectedPetId.value) {
+    clearHealthDashboard()
+    return
+  }
+
+  await fetchHealthData()
+}
+
+watch(selectedPetId, () => {
+  handlePetChange()
+})
+
+watch(activeChartMetric, async () => {
+  await nextTick()
+  if (hasRecentHealthData.value) {
+    renderHealthChart(recentWeekData.value)
+  }
+})
 
 const normalizeAlerts = (alerts) => {
   return (alerts || []).map(alert => ({
@@ -348,6 +445,8 @@ const buildRecentWeekData = (records) => {
         date,
         shortDate: date.slice(5),
         weight: null,
+        waterIntake: null,
+        defecationScore: null,
         weightLabel: '无',
         waterIntakeLabel: '无',
         foodIntakeLabel: '无',
@@ -366,6 +465,8 @@ const buildRecentWeekData = (records) => {
       date,
       shortDate: date.slice(5),
       weight: Number(latestRecord.weight),
+      waterIntake: normalizeNumber(latestRecord.waterIntake),
+      defecationScore: defecationScores[latestRecord.defecation] || null,
       weightLabel: `${Number(latestRecord.weight).toFixed(1)}kg`,
       waterIntakeLabel: formatIntake(latestRecord.waterIntake, 'ml'),
       foodIntakeLabel: formatIntake(latestRecord.foodIntake, 'g'),
@@ -383,6 +484,8 @@ const buildPlaceholderWeekData = () => {
     date,
     shortDate: date.slice(5),
     weight: null,
+    waterIntake: null,
+    defecationScore: null,
     weightLabel: '—',
     waterIntakeLabel: '—',
     foodIntakeLabel: '—',
@@ -414,7 +517,64 @@ const formatIntake = (value, unit) => {
   return Number.isFinite(numberValue) ? `${numberValue.toFixed(0)}${unit}` : '无'
 }
 
-const renderWeightChart = (weekData) => {
+const normalizeNumber = (value) => {
+  const numberValue = Number(value)
+  return Number.isFinite(numberValue) ? numberValue : null
+}
+
+const getChartValue = (day) => {
+  if (activeChartMetric.value === 'waterIntake') {
+    return day.waterIntake
+  }
+  if (activeChartMetric.value === 'defecation') {
+    return day.defecationScore
+  }
+  return day.weight
+}
+
+const getChartLabel = (value) => {
+  if (value == null) return ''
+  if (activeChartMetric.value === 'waterIntake') {
+    return `${Number(value).toFixed(0)}ml`
+  }
+  if (activeChartMetric.value === 'defecation') {
+    return defecationScoreLabels[value] || ''
+  }
+  return `${Number(value).toFixed(1)}kg`
+}
+
+const getYAxisConfig = () => {
+  if (activeChartMetric.value === 'defecation') {
+    return {
+      type: 'value',
+      name: activeChartMode.value.axisName,
+      min: 1,
+      max: 4,
+      interval: 1,
+      axisLabel: {
+        formatter: value => defecationScoreLabels[value] || ''
+      },
+      splitLine: {
+        lineStyle: {
+          color: '#e8eee9'
+        }
+      }
+    }
+  }
+
+  return {
+    type: 'value',
+    name: activeChartMode.value.axisName,
+    min: value => Math.max(0, Math.floor(value.min - (activeChartMetric.value === 'weight' ? 1 : 20))),
+    splitLine: {
+      lineStyle: {
+        color: '#e8eee9'
+      }
+    }
+  }
+}
+
+const renderHealthChart = (weekData) => {
   if (!weightChart.value) return
 
   if (chartInstance) {
@@ -444,7 +604,7 @@ const renderWeightChart = (weekData) => {
       }
     },
     legend: {
-      data: ['体重']
+      data: [activeChartMode.value.legend]
     },
     grid: {
       left: 48,
@@ -456,37 +616,28 @@ const renderWeightChart = (weekData) => {
       type: 'category',
       data: weekData.map(day => day.shortDate)
     },
-    yAxis: {
-      type: 'value',
-      name: '体重 (kg)',
-      min: value => Math.max(0, Math.floor(value.min - 1)),
-      splitLine: {
-        lineStyle: {
-          color: '#e8eee9'
-        }
-      }
-    },
+    yAxis: getYAxisConfig(),
     series: [
       {
-        name: '体重',
-        data: weekData.map(day => day.weight),
+        name: activeChartMode.value.legend,
+        data: weekData.map(day => getChartValue(day)),
         type: 'line',
         smooth: true,
         connectNulls: false,
         lineStyle: {
-          color: '#2e7d52',
+          color: activeChartMode.value.color,
           width: 3
         },
         itemStyle: {
-          color: '#2e7d52'
+          color: activeChartMode.value.color
         },
         areaStyle: {
-          color: 'rgba(46, 125, 82, 0.08)'
+          color: `${activeChartMode.value.color}14`
         },
         symbolSize: 8,
         label: {
           show: true,
-          formatter: params => params.value == null ? '' : `${Number(params.value).toFixed(1)}kg`
+          formatter: params => getChartLabel(params.value)
         }
       }
     ]
@@ -498,24 +649,11 @@ const renderWeightChart = (weekData) => {
 onMounted(() => {
   fetchPets()
 })
-
-watch(selectedPetId, (newId) => {
-  if (newId) {
-    fetchHealthData()
-  } else {
-    recentWeekData.value = []
-    weeklyWarning.value = false
-    if (chartInstance) {
-      chartInstance.dispose()
-      chartInstance = null
-    }
-  }
-})
 </script>
 
 <style scoped>
 .health {
-  max-width: 1200px;
+  max-width: 1280px;
   margin: 0 auto;
   padding: 20px;
 }
@@ -600,8 +738,15 @@ h1 {
 
 .health-content {
   display: grid;
-  grid-template-columns: 1fr 2fr;
+  grid-template-columns: minmax(320px, 0.95fr) minmax(0, 1.55fr);
   gap: 30px;
+  align-items: start;
+}
+
+.health-sidepanels {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
 }
 
 .health-form {
@@ -663,16 +808,6 @@ button:disabled:hover {
   font-weight: 700;
 }
 
-.health-content.placeholder .health-form,
-.health-content.placeholder .health-charts {
-  background-color: #fbfcfb;
-}
-
-.health-content.placeholder .health-form h2,
-.health-content.placeholder .health-charts h2 {
-  color: #8d9b92;
-}
-
 .health-charts {
   background-color: white;
   padding: 20px;
@@ -680,9 +815,56 @@ button:disabled:hover {
   border: 1px solid #e0e7e3;
 }
 
+.chart-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
 .health-charts h2 {
   color: #333;
-  margin-bottom: 20px;
+}
+
+.chart-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid #dce5df;
+  border-radius: 999px;
+  background-color: #f7faf8;
+}
+
+.chart-tabs button {
+  min-width: 76px;
+  margin: 0;
+  padding: 7px 12px;
+  border: none;
+  border-radius: 999px;
+  background-color: transparent;
+  color: #60756a;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.chart-tabs button:hover {
+  background-color: #edf5f0;
+}
+
+.chart-tabs button.active,
+.chart-tabs button.active:hover {
+  background-color: #2e7d52;
+  color: white;
+}
+
+.chart-tabs button:disabled,
+.chart-tabs button:disabled:hover {
+  background-color: transparent;
+  color: #a4afa8;
+  cursor: not-allowed;
 }
 
 .chart {
@@ -929,6 +1111,20 @@ button:disabled:hover {
 
   .weekly-summary {
     grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+  }
+
+  .chart-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .chart-tabs {
+    width: 100%;
+  }
+
+  .chart-tabs button {
+    flex: 1;
+    min-width: 0;
   }
 }
 </style>

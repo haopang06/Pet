@@ -3,14 +3,14 @@
     <h1>登录</h1>
     <form @submit.prevent="handleLogin">
       <div class="form-group">
-        <label for="username">用户名</label>
-        <input type="text" id="username" v-model="form.username" required>
+        <label for="username">用户名 / 手机号</label>
+        <input type="text" id="username" v-model.trim="form.username" autocomplete="username" required>
       </div>
       <div class="form-group">
         <label for="password">密码</label>
-        <input type="password" id="password" v-model="form.password" required>
+        <input type="password" id="password" v-model="form.password" autocomplete="current-password" required>
       </div>
-      <button type="submit">登录</button>
+      <button type="submit" :disabled="isSubmitting">{{ isSubmitting ? '登录中' : '登录' }}</button>
       <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
       <p>还没有账号？<router-link to="/register">立即注册</router-link></p>
     </form>
@@ -21,27 +21,31 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
+import { useSessionStore } from '../stores/session'
 
 const router = useRouter()
+const sessionStore = useSessionStore()
 const form = ref({
   username: '',
   password: ''
 })
 const errorMessage = ref('')
+const isSubmitting = ref(false)
 
 const handleLogin = async () => {
   try {
+    isSubmitting.value = true
     errorMessage.value = ''
     const response = await axios.post('/api/auth/login', {
       username: form.value.username.trim(),
       password: form.value.password
     })
-    localStorage.setItem('token', response.data.token)
-    localStorage.setItem('userId', response.data.userId)
-    localStorage.setItem('username', response.data.username)
+    sessionStore.setSession(response.data)
     router.push('/')
   } catch (error) {
-    errorMessage.value = error.response?.data?.message || '登录失败，请检查用户名和密码'
+    errorMessage.value = error.response?.data?.message || '登录失败，请检查用户名、手机号和密码'
+  } finally {
+    isSubmitting.value = false
   }
 }
 </script>
@@ -95,6 +99,12 @@ button {
 
 button:hover {
   background-color: #45a049;
+}
+
+button:disabled,
+button:disabled:hover {
+  background-color: #b9c7bd;
+  cursor: not-allowed;
 }
 
 p {

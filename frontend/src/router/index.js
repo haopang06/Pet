@@ -1,5 +1,14 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
+const requireAuth = (to, from, next) => {
+  if (typeof window !== 'undefined' && window.localStorage.getItem('token') && window.localStorage.getItem('userId')) {
+    next()
+    return
+  }
+
+  next('/login')
+}
+
 const routes = [
   {
     path: '/',
@@ -17,6 +26,12 @@ const routes = [
     component: () => import('../views/Register.vue')
   },
   {
+    path: '/profile',
+    name: 'Profile',
+    component: () => import('../views/Profile.vue'),
+    beforeEnter: requireAuth
+  },
+  {
     path: '/pets',
     name: 'Pets',
     component: () => import('../views/Pets.vue')
@@ -30,6 +45,11 @@ const routes = [
     path: '/health',
     name: 'Health',
     component: () => import('../views/Health.vue')
+  },
+  {
+    path: '/diary',
+    name: 'Diary',
+    component: () => import('../views/Diary.vue')
   }
 ]
 

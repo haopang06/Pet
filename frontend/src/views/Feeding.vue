@@ -120,6 +120,37 @@
             </div>
           </div>
         </div>
+
+        <div v-if="!isPlaceholderPlan(plan)" class="guide-section">
+          <div class="guide-head">
+            <div>
+              <p>Feeding Notes</p>
+              <h3>{{ guideTitle(plan) }}</h3>
+            </div>
+            <a :href="guideMoreUrl(plan)" target="_blank" rel="noreferrer">
+              前往小红书查看更多
+            </a>
+          </div>
+          <div class="guide-grid">
+            <a
+              v-for="guide in guideCards(plan)"
+              :key="guide.title"
+              class="guide-card"
+              :href="guide.url"
+              target="_blank"
+              rel="noreferrer"
+            >
+              <div class="guide-visual" :class="guide.tone">
+                <PetAvatar :pet="planPet(plan)" :type="planPet(plan)?.petType || 'cat'" size="lg" />
+                <span>{{ guide.badge }}</span>
+              </div>
+              <div class="guide-copy">
+                <strong>{{ guide.title }}</strong>
+                <p>{{ guide.description }}</p>
+              </div>
+            </a>
+          </div>
+        </div>
       </div>
     </TransitionGroup>
   </div>
@@ -230,7 +261,7 @@ const ratioSegmentStyle = (plan) => {
 
 const recommendedWater = (plan) => {
   if (isPlaceholderPlan(plan)) return '—'
-  const pet = plan.pet || pets.value.find(item => item.id == selectedPetId.value)
+  const pet = planPet(plan)
   const weight = Number(pet?.weight)
   if (!Number.isFinite(weight) || weight <= 0) return '0'
   const petType = pet?.petType
@@ -241,6 +272,8 @@ const recommendedWater = (plan) => {
 const planKey = (plan) => plan.id || plan.pet?.id || `${planTitle(plan)}-${plan.frequency}`
 
 const isPlaceholderPlan = (plan) => Boolean(plan?.placeholder)
+
+const planPet = (plan) => plan.pet || pets.value.find(item => item.id == selectedPetId.value) || {}
 
 const planPetId = (plan) => plan.pet?.id || pets.value.find(pet => planTitle(plan).startsWith(pet.name))?.id || selectedPetId.value || 'unknown'
 
@@ -286,11 +319,66 @@ const planTitle = (plan) => {
   if (isPlaceholderPlan(plan)) {
     return '选择宠物后生成专属喂养方案'
   }
-  const pet = plan.pet || pets.value.find(item => item.id == selectedPetId.value)
+  const pet = planPet(plan)
   if (!pet) {
     return `${selectedPetName.value}的喂养方案`
   }
   return `${pet.name}的喂养方案（${petTypeText(pet.petType)} / ${pet.breed}）`
+}
+
+const guideSearchUrl = (keyword) => `https://www.xiaohongshu.com/search_result?keyword=${encodeURIComponent(keyword)}`
+
+const guideTitle = (plan) => {
+  const pet = planPet(plan)
+  return `${petTypeText(pet.petType)}类饲养攻略参考`
+}
+
+const guideMoreUrl = (plan) => {
+  const pet = planPet(plan)
+  const typeText = petTypeText(pet.petType)
+  return guideSearchUrl(`${pet.breed || typeText} ${typeText} 宠物博主 饲养日常 喂养攻略`)
+}
+
+const guideCards = (plan) => {
+  const pet = planPet(plan)
+  const typeText = petTypeText(pet.petType)
+  const breed = pet.breed || typeText
+
+  if (pet.petType === 'dog') {
+    return [
+      {
+        title: `${breed}分餐与湿粮搭配经验`,
+        description: '参考同类型宠物博主的分餐节奏、湿粮添加和冻干补充方式，适合作为日常喂养记录对照。',
+        badge: '分餐',
+        tone: 'warm',
+        url: guideSearchUrl(`${breed} 狗狗 湿粮 冻干 喂养攻略`)
+      },
+      {
+        title: `${breed}运动量与饮水观察`,
+        description: '围绕活动量、饮水量和体重变化做日常观察，辅助判断当前喂养方案是否需要微调。',
+        badge: '日常',
+        tone: 'cool',
+        url: guideSearchUrl(`${breed} 狗狗 饲养日常 饮水 运动量`)
+      }
+    ]
+  }
+
+  return [
+    {
+      title: `${breed}冻干/湿粮换粮笔记`,
+      description: '参考同类型猫咪博主的换粮节奏、适口性反馈和软便观察，避免一次性更换过快。',
+      badge: '换粮',
+      tone: 'mint',
+      url: guideSearchUrl(`${breed} 猫咪 冻干 湿粮 喂养攻略`)
+    },
+    {
+      title: `${breed}饮水与体重管理日常`,
+      description: '结合饮水、进食量和体重记录，查看同类型猫咪日常养护经验，辅助健康监测。',
+      badge: '养护',
+      tone: 'cool',
+      url: guideSearchUrl(`${breed} 猫咪 饲养日常 饮水 体重管理`)
+    }
+  ]
 }
 
 const fetchPets = async () => {
@@ -621,6 +709,162 @@ h1 {
   border-top: 1px solid #e3e9e6;
 }
 
+.guide-section {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid #e3e9e6;
+}
+
+.guide-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+
+.guide-head p {
+  color: #60756a;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  margin-bottom: 4px;
+}
+
+.guide-head h3 {
+  color: #1f2d26;
+  font-size: 15px;
+  margin: 0;
+}
+
+.guide-head a {
+  padding: 7px 11px;
+  border-radius: 999px;
+  background-color: #edf7ef;
+  color: #2e7d52;
+  font-size: 13px;
+  font-weight: 800;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.guide-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.guide-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #e0e7e3;
+  border-radius: 8px;
+  background-color: #fbfcfb;
+  text-decoration: none;
+  color: inherit;
+  transition: all 0.2s ease;
+}
+
+.guide-card:hover {
+  border-color: #b7e1c6;
+  background-color: #f3faf6;
+  transform: translateY(-1px);
+}
+
+.guide-visual {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 128px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #eef8f2 0%, #f7faf8 100%);
+}
+
+.guide-visual::before,
+.guide-visual::after {
+  position: absolute;
+  content: '';
+  border-radius: 50%;
+  opacity: 0.16;
+}
+
+.guide-visual::before {
+  width: 84px;
+  height: 84px;
+  top: -18px;
+  right: -10px;
+  background: #10b981;
+}
+
+.guide-visual::after {
+  width: 118px;
+  height: 118px;
+  left: -30px;
+  bottom: -36px;
+  background: #3b82f6;
+}
+
+.guide-visual :deep(.pet-avatar) {
+  width: 74px;
+  height: 74px;
+  position: relative;
+  z-index: 1;
+}
+
+.guide-visual span {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 1;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background-color: rgba(255, 255, 255, 0.9);
+  color: #2e7d52;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.guide-visual.warm::before {
+  background: #f59e0b;
+}
+
+.guide-visual.warm::after {
+  background: #10b981;
+}
+
+.guide-visual.cool::before {
+  background: #3b82f6;
+}
+
+.guide-visual.cool::after {
+  background: #8b5cf6;
+}
+
+.guide-visual.mint::before {
+  background: #10b981;
+}
+
+.guide-visual.mint::after {
+  background: #22c55e;
+}
+
+.guide-copy strong {
+  display: block;
+  color: #1f2d26;
+  font-size: 15px;
+  line-height: 1.4;
+  margin-bottom: 6px;
+}
+
+.guide-copy p {
+  color: #60756a;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
 .feeding-timeline h3 {
   color: #52665a;
   margin-bottom: 12px;
@@ -738,12 +982,22 @@ h1 {
 
   .plan-details,
   .plan-main-card,
-  .portion-row {
+  .portion-row,
+  .guide-grid {
     grid-template-columns: 1fr;
   }
 
   .frequency-card {
     min-height: auto;
+  }
+
+  .guide-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .guide-head a {
+    width: fit-content;
   }
 }
 

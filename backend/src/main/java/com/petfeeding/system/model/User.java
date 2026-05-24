@@ -6,15 +6,30 @@ import javax.persistence.*;
 import java.util.List;
 
 @Entity
-@Table(name = "users")
+@Table(
+        name = "users",
+        uniqueConstraints = {
+                @UniqueConstraint(columnNames = {"username"}),
+                @UniqueConstraint(columnNames = {"phone"}),
+                @UniqueConstraint(columnNames = {"email"})
+        }
+)
 public class User {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(nullable = false)
     private String username;
+    @Column(unique = true, length = 20)
+    private String phone;
+    @Column(nullable = false)
     private String password;
+    @Column(nullable = false)
     private String email;
+    @Lob
+    @Column(columnDefinition = "LONGTEXT")
+    private String avatar;
 
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL)
     @JsonIgnoreProperties("user")
@@ -45,12 +60,28 @@ public class User {
         this.password = password;
     }
 
+    public String getPhone() {
+        return phone;
+    }
+
+    public void setPhone(String phone) {
+        this.phone = phone;
+    }
+
     public String getEmail() {
         return email;
     }
 
     public void setEmail(String email) {
         this.email = email;
+    }
+
+    public String getAvatar() {
+        return avatar;
+    }
+
+    public void setAvatar(String avatar) {
+        this.avatar = avatar;
     }
 
     public List<Pet> getPets() {
